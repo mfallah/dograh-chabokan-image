@@ -1,23 +1,9 @@
-name: build-dograh-allinone
-
-# Ø³Ø§Ø®Øª Ø§ÛŒÙ…ÛŒØ¬ Ú©Ø§Ù…Ù„ Dograh (UI + API + MinIO + nginx) Ø±ÙˆÛŒ Ø³Ø±ÙˆØ± GitHub
-# Ùˆ push Ø¨Ù‡ GHCR. Ø¨Ø¹Ø¯ Ø§Ø² Ø§ÛŒÙ†ØŒ Ø³Ø±ÙˆÛŒØ³ Ø¯Ø§Ú©Ø± Ú†Ø§Ø¨Ú©Ø§Ù† ÙÙ‚Ø· ÛŒÚ© Ø®Ø· FROM Ù„Ø§Ø²Ù… Ø¯Ø§Ø±Ø¯
-# Ùˆ Ø¯ÛŒÚ¯Ø± Ø¨Ø±Ø§ÛŒ Ø¨ÛŒÙ„Ø¯ Ø¨Ù‡ GitHub / npm / dl.min.io / Docker Hub Ø¯Ø³ØªØ±Ø³ÛŒ Ù†Ø¯Ø§Ø±Ø¯.
-#
-# Ù¾ÛŒØ´â€ŒÙ†ÛŒØ§Ø²:
-#   1) ÙØ§ÛŒÙ„ Dockerfile Ø¯Ø± Ø±ÛŒØ´Ù‡Ù” Ù‡Ù…ÛŒÙ† Ø±ÛŒÙ¾Ùˆ Ø¨Ø§Ø´Ø¯ (Ù‡Ù…Ø§Ù† Ù†Ø³Ø®Ù‡Ù” v2).
-#   2) Actions Ø±Ø§ Ø§Ø¬Ø±Ø§ Ú©Ù† (ØªØ¨ Actions â†’ Run workflow) ÛŒØ§ ÛŒÚ© commit Ø¨Ø²Ù†.
-#   3) Ø¨Ø¹Ø¯ Ø§Ø² Ø§ÙˆÙ„ÛŒÙ† pushØŒ visibility Ù¾Ú©ÛŒØ¬ Ø±Ø§ Public Ú©Ù†:
-#      GitHub â†’ profile â†’ Packages â†’ dograh-allinone â†’ Settings â†’ Change visibility â†’ Public
-#      (ÙˆÚ¯Ø±Ù†Ù‡ Ú†Ø§Ø¨Ú©Ø§Ù† Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø¨Ø¯ÙˆÙ† Ù„Ø§Ú¯ÛŒÙ† pull Ú©Ù†Ø¯)
+name: build-image
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/dograh-allinone
 
 jobs:
   build:
@@ -29,6 +15,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -36,18 +25,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push (linux/amd64)
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           platforms: linux/amd64
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/dograh-allinone:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
