@@ -1,22 +1,17 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# Dograh AI â€” all-in-one container for the Chabokan "Docker" service, v2
-# (one container, one exposed HTTP port 80, managed Postgres + Redis outside).
+# Dograh AI - all-in-one image for a single-container PaaS (Chabokan Docker).
+# Build this image in CI and push to a registry; the PaaS service then only
+# needs:   FROM <registry>/dograh-allinone:latest
 #
-# v2 = v1 Ø¨Ø¯ÙˆÙ† ÙˆØ§Ø¨Ø³ØªÚ¯ÛŒ Ø¨Ù‡ Ø§ÛŒÙ…ÛŒØ¬ docker.chabokan.net/dograhai/minio
-#      (Ù…ÛŒØ±ÙˆØ± Ú†Ø§Ø¨Ú©Ø§Ù† Ø¨Ø±Ø§ÛŒ Ø¢Ù† Ø§ÛŒÙ…ÛŒØ¬ Ø®Ø·Ø§ÛŒ 503 upstream_unavailable Ø¯Ø§Ø¯).
-#      Ø¨Ø§ÛŒÙ†Ø±ÛŒ MinIO Ø¯Ø± Ø²Ù…Ø§Ù† Ø¨ÛŒÙ„Ø¯ Ø§Ø² dl.min.io Ø¯Ø§Ù†Ù„ÙˆØ¯ Ù…ÛŒØ´ÙˆØ¯.
-#
-# Inside: UI :3010 | API :8000 | MinIO :9000 (data on /data) | nginx :80
-# Routes: /api/v1/... -> API | /voice-audio/... -> MinIO | rest -> UI
+# Inside: Next.js UI :3010 | FastAPI API :8000 | MinIO :9000 (data=/data)
+#         nginx :80  ->  /api/v1 -> API | /voice-audio -> MinIO | rest -> UI
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Stage 1 â€” Next.js UIØŒ Ø¨Ø±Ø§ÛŒ glibc Ø¨ÛŒÙ„Ø¯ Ù…ÛŒØ´ÙˆØ¯ (Ø±Ø§Ù†ØªØ§ÛŒÙ… Debian Ø§Ø³ØªØŒ Ù†Ù‡ Alpine)
+# Stage 1 - build the Next.js UI for glibc (runtime below is Debian-based)
 # -----------------------------------------------------------------------------
-# Ø§ÛŒÙ…ÛŒØ¬ Ø±Ø³Ù…ÛŒ Docker Hub Â«nodeÂ» Ø§Ø² Ø·Ø±ÛŒÙ‚ Ù…ÛŒØ±ÙˆØ± Ú†Ø§Ø¨Ú©Ø§Ù†
-# Ø§Ú¯Ø± pull Ø´Ú©Ø³Øª Ø®ÙˆØ±Ø¯: docker.chabokan.net/library/node:22-slim Ø±Ø§ Ø§Ù…ØªØ­Ø§Ù† Ú©Ù†
-FROM docker.chabokan.net/node:22-slim AS ui-build
+FROM node:22-slim AS ui-build
 
 ARG DOGRAH_REF=main
 
@@ -28,7 +23,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
-# ÙÙ‚Ø· Ù…Ø®Ø²Ù† dograh Ù„Ø§Ø²Ù… Ø§Ø³ØªØ› Ø³Ø§Ø¨â€ŒÙ…Ø§Ú˜ÙˆÙ„ pipecat Ø¨Ø±Ø§ÛŒ Ø¨ÛŒÙ„Ø¯ UI Ù„Ø§Ø²Ù… Ù†ÛŒØ³Øª.
+# Only the repo is needed for the UI build (pipecat submodule is not).
 RUN git clone --depth 1 --branch "${DOGRAH_REF}" https://github.com/dograh-hq/dograh.git /src
 
 WORKDIR /src/ui
@@ -38,9 +33,9 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Stage 2 â€” runtime = Ø§ÛŒÙ…ÛŒØ¬ Ø±Ø³Ù…ÛŒ dograh-api + nginx + UI + MinIO
+# Stage 2 - runtime: official dograh-api image + nginx + UI + MinIO
 # -----------------------------------------------------------------------------
-FROM docker.chabokan.net/dograhai/dograh-api:latest
+FROM dograhai/dograh-api:latest
 
 USER root
 
@@ -49,8 +44,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
 
-# --- MinIO server binary (Ø¨Ù‡ Ø¬Ø§ÛŒ Ú©Ø´ÛŒØ¯Ù† Ø§ÛŒÙ…ÛŒØ¬ minio) --------------------------
-# Ø³Ù‡ Ù…Ù†Ø¨Ø¹ Ù¾Ø´Øª Ø³Ø± Ù‡Ù… Ø§Ù…ØªØ­Ø§Ù† Ù…ÛŒâ€ŒØ´ÙˆØ¯Ø› Ø§ÙˆÙ„ÛŒ Ù…Ø¹Ù…ÙˆÙ„Ø§Ù‹ Ú©Ø§ÙÛŒ Ø§Ø³Øª.
+# MinIO server binary (two sources, first usually works)
 RUN set -eux; \
     url1="https://dl.min.io/server/minio/release/linux-amd64/minio"; \
     url2="https://dl.min.io/server/minio/release/linux-amd64/archive/minio.RELEASE.2025-04-22T22-12-26Z"; \
@@ -60,12 +54,11 @@ RUN set -eux; \
     chmod +x /usr/local/bin/minio; \
     /usr/local/bin/minio --version
 
-# Next.js standalone output + static assets + public files
 COPY --from=ui-build /src/ui/.next/standalone /app/ui
 COPY --from=ui-build /src/ui/.next/static     /app/ui/.next/static
 COPY --from=ui-build /src/ui/public           /app/ui/public
 
-# --- nginx: ÛŒÚ© Ø³Ø±ÙˆØ±ØŒ Ø³Ù‡ upstream ---------------------------------------------
+# nginx: one server, three upstreams
 RUN printf '%s\n' \
   'server {' \
   '    listen 80 default_server;' \
@@ -108,7 +101,7 @@ RUN printf '%s\n' \
   '}' \
   > /etc/nginx/conf.d/dograh.conf
 
-# --- entrypoint: MinIO + UI + nginx + API Ø¯Ø± ÛŒÚ© Ø¯Ø±Ø®Øª Ù¾Ø±ÙˆØ³Ù‡ -------------------
+# entrypoint: MinIO + UI + nginx + API in one process tree
 RUN printf '%s\n' \
   '#!/bin/bash' \
   'set -u' \
@@ -132,7 +125,6 @@ RUN printf '%s\n' \
   'nginx -g "daemon off;" &' \
   'NGINX_PID=$!' \
   '' \
-  '# alembic upgrade headØŒ Ø³Ù¾Ø³ uvicorn + arq worker (+ Ø³ÛŒÙ†Ú¯Ù„ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªÛŒØ§Ø±ÛŒ)' \
   '/app/scripts/start_services_docker.sh &' \
   'API_PID=$!' \
   '' \
@@ -144,7 +136,6 @@ RUN printf '%s\n' \
   '}' \
   'trap term TERM INT' \
   '' \
-  '# Ø§Ú¯Ø± Ù‡Ø± Ù¾Ø±ÙˆØ³Ù‡â€ŒØ§ÛŒ Ø¨Ù…ÛŒØ±Ø¯ØŒ Ú©Ø§Ù†ØªÛŒÙ†Ø± Ù‡Ù… Ù¾Ø§ÛŒÛŒÙ† Ø¨ÛŒØ§ÛŒØ¯ ØªØ§ Ú†Ø§Ø¨Ú©Ø§Ù† ØªÙ…ÛŒØ² Ø±ÛŒâ€ŒØ§Ø³ØªØ§Ø±Øª Ú©Ù†Ø¯' \
   'wait -n' \
   'echo "[dograh] a process exited - shutting the container down"' \
   'kill -TERM "$MINIO_PID" "$UI_PID" "$NGINX_PID" "$API_PID" 2>/dev/null' \
