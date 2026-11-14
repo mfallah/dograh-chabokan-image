@@ -33,7 +33,12 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Stage 2 - runtime: official dograh-api image + nginx + UI + MinIO
+# Stage 2 - MinIO server binary (Dograh's own MinIO image)
+# -----------------------------------------------------------------------------
+FROM dograhai/minio:2026.09.22 AS minio
+
+# -----------------------------------------------------------------------------
+# Stage 3 - runtime: official dograh-api image + nginx + UI + MinIO
 # -----------------------------------------------------------------------------
 FROM dograhai/dograh-api:latest
 
@@ -44,15 +49,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
 
-# MinIO server binary (two sources, first usually works)
-RUN set -eux; \
-    url1="https://dl.min.io/server/minio/release/linux-amd64/minio"; \
-    url2="https://dl.min.io/server/minio/release/linux-amd64/archive/minio.RELEASE.2025-04-22T22-12-26Z"; \
-    if ! curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 "$url1" -o /usr/local/bin/minio; then \
-      curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 "$url2" -o /usr/local/bin/minio; \
-    fi; \
-    chmod +x /usr/local/bin/minio; \
-    /usr/local/bin/minio --version
+# MinIO server binary, taken from Dograh's own MinIO image
+# (dl.min.io now answers 410 Gone, so the image is the reliable source).
+COPY --from=minio /usr/bin/minio /usr/local/bin/minio
 
 COPY --from=ui-build /src/ui/.next/standalone /app/ui
 COPY --from=ui-build /src/ui/.next/static     /app/ui/.next/static
